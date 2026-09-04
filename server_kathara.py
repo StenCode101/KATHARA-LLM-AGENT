@@ -11,38 +11,53 @@ from Kathara.setting.Setting import Setting
 # Inizializziamo il Server FastMCP
 mcp = MCPServer("ServerGestioneKathara")
 
+import os
+import subprocess
+from Kathara.manager.Kathara import Kathara
+from Kathara.parser.netkit.LabParser import LabParser
+
 @mcp.tool()
 def avvia_laboratorio(percorso_lab: str) -> str:
-    """Legge la configurazione, avvia il lab e apre i terminali usando le API native di Kathará."""
+    """Legge la configurazione, avvia il lab e apre i terminali usando Docker exec."""
     try:
         if not os.path.isdir(percorso_lab):
             return f"❌ Errore: La cartella '{percorso_lab}' non esiste."
             
-        # 1. Analizza la cartella tramite il parser ufficiale
+        # 1. Analizza la cartella
         lab = LabParser.parse(percorso_lab)
         
-        # 2. Esegue il deploy dell'infrastruttura
+        # 2. ASSEGNAZIONE AUTOMATICA DEL NOME (se mancante)
+        if not lab.name:
+            # Estrae il nome dell'ultima cartella dal percorso
+            lab.name = os.path.basename(os.path.normpath(percorso_lab))
+            
+        # 3. Avvia il lab con le API native
         Kathara.get_instance().deploy_lab(lab)
         
-        # 3. Ottiene la shell predefinita configurata in Kathará (es. /bin/bash)
-        shell_dispositivo = Setting.get_instance().device_shell
+        # 4. Interroga Docker per i container
+        risultato_docker = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"], 
+            capture_output=True, text=True, check=True
+        )
+        lista_container = risultato_docker.stdout.strip().split('\n')
         
-        # 4. Apre un terminale per ogni macchina avviata
+        # 5. Apre i terminali
         macchine_avviate = list(lab.machines.keys())
         for nome_macchina in macchine_avviate:
-            # Crea il comando Python nativo documentato nelle API
-            comando_api = (
-                f"from Kathara.manager.Kathara import Kathara; "
-                f"Kathara.get_instance().connect_tty('{nome_macchina}', lab_name='{lab.name}', shell='{shell_dispositivo}', logs=True)"
-            )
+            nome_container = None
+            for linea in lista_container:
+                if f"_{nome_macchina}_" in linea:
+                    nome_container = linea.strip()
+                    break
             
-            # Esegue il comando in una nuova finestra di Windows (CREATE_NEW_CONSOLE)
-            subprocess.Popen(
-                [sys.executable, "-c", comando_api],
-                creationflags=subprocess.CREATE_NEW_CONSOLE
-            )
-            
-        return f"✅ Laboratorio '{lab.name}' avviato. Terminali nativi aperti per: {', '.join(macchine_avviate)}."
+            if nome_container:
+                # NOTA: Usiamo /c affinché le finestre si chiudano da sole quando il lab viene spento
+                comando_windows = f"start cmd.exe /c docker exec -it {nome_container} /bin/bash"
+                subprocess.Popen(comando_windows, shell=True)
+            else:
+                print(f"⚠️ Impossibile aprire il terminale per {nome_macchina}: container non trovato.")
+                
+        return f"✅ Laboratorio '{lab.name}' avviato. Terminali aperti."
         
     except Exception as e:
         return f"❌ Errore durante l'avvio del laboratorio: {str(e)}"
@@ -51,8 +66,10 @@ def avvia_laboratorio(percorso_lab: str) -> str:
 def spegni_laboratorio(nome_lab: str) -> str:
     """Spegne ed elimina un laboratorio in esecuzione utilizzando il suo nome."""
     try:
+        # undeploy_lab accetta direttamente il nome del lab per spegnerlo
         Kathara.get_instance().undeploy_lab(lab_name=nome_lab)
-        return f"✅ Laboratorio '{nome_lab}' spento e rimosso con successo."
+        
+        return f"✅ Laboratorio '{nome_lab}' spento e rimosso. Le finestre dei terminali si chiuderanno automaticamente."
     except Exception as e:
         return f"❌ Errore durante lo spegnimento del laboratorio: {str(e)}"
     
@@ -100,7 +117,7 @@ def apri_terminale(nome_macchina: str) -> str:
             return f"❌ Dispositivo '{nome_macchina}' non trovato su Docker. Sicuro sia avviato?"
         
         # 3. Lancia il terminale di sistema entrando direttamente nel container tramite Docker
-        comando_windows = f"start cmd.exe /k docker exec -it {nome_container} /bin/bash"
+        comando_windows = f"start cmd.exe /c docker exec -it {nome_container} /bin/bash"
         
         subprocess.Popen(comando_windows, shell=True)
         

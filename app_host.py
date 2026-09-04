@@ -65,7 +65,10 @@ async def main():
                         }
                         
                         try:
-                            risposta_http = requests.post(OLLAMA_URL, json=payload, timeout=120)
+                            # Esegue la richiesta bloccante in un thread separato
+                            risposta_http = await asyncio.to_thread(
+                                requests.post, OLLAMA_URL, json=payload, timeout=120
+                            )
                             risposta_http.raise_for_status() 
                             risposta_grezza = risposta_http.json()
                         except requests.exceptions.RequestException as e:
