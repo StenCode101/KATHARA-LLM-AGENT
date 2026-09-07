@@ -1,13 +1,28 @@
-import asyncio, os, requests, sys
+import asyncio, os, sys, itertools, aiohttp
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODELLO = "qwen3:8b" 
 
 def formatta_tools(tools_mcp):
     return [{"type": "function", "function": {"name": t.name, "description": t.description, "parameters": {"type": "object", "properties": t.input_schema.get("properties", {}), "required": t.input_schema.get("required", [])}}} for t in tools_mcp]
+
+async def mostra_caricamento(evento_stop):
+    """Mostra un'animazione di caricamento nel terminale finché l'evento non viene impostato."""
+    spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
+    
+    while not evento_stop.is_set():
+        sys.stdout.write(f"\r⏳ Elaborazione IA {next(spinner)}")
+        sys.stdout.flush()
+        try:
+            await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            break
+            
+    # Pulisce la riga quando ha finito
+    sys.stdout.write("\r" + " " * 30 + "\r")
+    sys.stdout.flush()
 
 async def main():
     print("🔄 Connessione al Server MCP Kathara API...")
@@ -28,7 +43,15 @@ async def main():
             
             storico_messaggi = [{
                 "role": "system", 
-                "content": "Sei un ingegnere di reti. Puoi usare gli strumenti per avviare, spegnere e inviare comandi a laboratori Kathará esistenti. Quando l'utente chiede test di rete (come tcpdump o ping), usa lo strumento esegui_comando."
+                "content": (
+                    "Sei un ingegnere di reti. Puoi usare gli strumenti per avviare, spegnere e inviare comandi a laboratori Kathará esistenti. "
+                    "Quando l'utente ti chiede di risolvere un compito, usa lo strumento analizza_compito per leggere il file. "
+                    "Per ogni domanda trovata, NON limitarti a leggere la soluzione: indaga attivamente sul laboratorio usando esegui_comando "
+                    "(es. tcpdump, ping, ip route) per ricavare tu stesso la risposta. "
+                    "Infine, scrivi la tua analisi dettagliata e confronta il risultato ottenuto sul campo con la soluzione corretta fornita dal file, "
+                    "spiegando il perché del risultato. "
+                    "REGOLA CRITICA: Quando esegui un ping, devi SEMPRE usare il parametro -c (es. ping -c 2 <ip>)."
+                )
             }]
             
             while True:
@@ -42,7 +65,7 @@ async def main():
                 if prompt.lower() in ["esci", "exit", "quit"]:
                     break
                 
-                # NUOVO COMANDO: Svuota la memoria se l'IA si confonde
+                # Svuota la memoria se l'IA si confonde
                 if prompt.lower() in ["reset", "pulisci", "clear"]:
                     storico_messaggi = [storico_messaggi[0]]
                     print("🧹 Memoria azzerata. Contesto pulito.\n")
@@ -64,20 +87,33 @@ async def main():
                             "tools": formatta_tools(tools.tools)
                         }
                         
+                        # Inizializzazione del caricatore animato
+                        evento_stop = asyncio.Event()
+                        task_caricamento = asyncio.create_task(mostra_caricamento(evento_stop))
+                        
                         try:
-                            # Esegue la richiesta bloccante in un thread separato
-                            risposta_http = await asyncio.to_thread(
-                                requests.post, OLLAMA_URL, json=payload, timeout=120
-                            )
-                            risposta_http.raise_for_status() 
-                            risposta_grezza = risposta_http.json()
-                        except requests.exceptions.RequestException as e:
+                            # aiohttp è asincrono nativo: taglia la connessione all'istante su Ctrl+C
+                            # Imposta total=None per disabilitare il limite di tempo e aspettare Ollama all'infinito
+                            timeout_infinito = aiohttp.ClientTimeout(total=None)
+                            async with aiohttp.ClientSession(timeout=timeout_infinito) as session_http:
+                                async with session_http.post(OLLAMA_URL, json=payload) as risposta_http:
+                                    risposta_http.raise_for_status() 
+                                    risposta_grezza = await risposta_http.json()
+                                    
+                        except aiohttp.ClientError as e:
                             print(f"\n⚠️ Errore di comunicazione con Ollama: {e}")
                             print("Ritorno al prompt principale.\n")
                             break
-                        except ValueError:
-                            print("\n⚠️ Ollama ha restituito una risposta illeggibile.")
+                        except Exception as e:
+                            import traceback
+                            print(f"\n⚠️ Errore imprevisto durante l'elaborazione: {e}")
+                            print("🔍 DETTAGLIO ERRORE:")
+                            traceback.print_exc()
                             break
+                        finally:
+                            # Ferma sempre l'animazione, sia in caso di successo che di interruzione
+                            evento_stop.set()
+                            await task_caricamento
                         
                         if "error" in risposta_grezza:
                             print(f"\n❌ ERRORE INTERNO OLLAMA: {risposta_grezza['error']}")
@@ -120,7 +156,7 @@ async def main():
                     print("Ritorno al prompt principale...\n")
 
 if __name__ == "__main__":
-    try:
+    try:                        
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n🛑 Programma interrotto dall'utente.")

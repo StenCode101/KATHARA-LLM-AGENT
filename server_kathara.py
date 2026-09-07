@@ -16,6 +16,60 @@ import subprocess
 from Kathara.manager.Kathara import Kathara
 from Kathara.parser.netkit.LabParser import LabParser
 
+
+import re
+import os
+
+@mcp.tool()
+def analizza_compito(percorso_file: str) -> str:
+    """
+    Legge un file di testo con le domande del compito, pulisce la sintassi (es. {1:SHORTANSWER...}) 
+    sostituendola con segnaposto testuali e restituisce il testo affiancato dalle soluzioni corrette.
+    """
+    try:
+        if not os.path.isfile(percorso_file):
+            return f"❌ Errore: Il file '{percorso_file}' non esiste."
+            
+        with open(percorso_file, 'r', encoding='utf-8') as f:
+            testo = f.read()
+            
+        soluzioni = {}
+        contatore = 1
+        
+        # Funzione interna per analizzare e sostituire ogni blocco {...}
+        def rimpiazza_blocco(match):
+            nonlocal contatore
+            blocco = match.group(1)
+            
+            # Estrae tutte le risposte corrette marcate con ~= e che terminano prima di #OK
+            corrette = re.findall(r"~=([^#]+)#OK", blocco)
+            
+            id_domanda = f"[DOMANDA {contatore}]"
+            if corrette:
+                # Gestisce il caso di risposte multiple corrette (es. HTTP/1.1 oppure 1.1)
+                soluzioni[id_domanda] = " OPPURE ".join(corrette)
+            else:
+                soluzioni[id_domanda] = "Nessuna soluzione specificata"
+                
+            contatore += 1
+            return id_domanda
+
+        # Cerca tutti i blocchi compresi tra { e } e li elabora
+        testo_pulito = re.sub(r"\{([^}]+)\}", rimpiazza_blocco, testo)
+        
+        # Costruisce l'output formattato per l'LLM
+        risultato_finale = "📄 TESTO DEL COMPITO:\n"
+        risultato_finale += testo_pulito.strip() + "\n\n"
+        
+        risultato_finale += "✅ CHIAVE DI LETTURA (SOLUZIONI CORRETTE):\n"
+        for id_dom, sol in soluzioni.items():
+            risultato_finale += f"{id_dom}: {sol}\n"
+            
+        return risultato_finale
+        
+    except Exception as e:
+        return f"❌ Errore durante l'analisi del compito: {str(e)}"
+    
 @mcp.tool()
 def avvia_laboratorio(percorso_lab: str) -> str:
     """Legge la configurazione, avvia il lab e apre i terminali usando Docker exec."""
