@@ -106,7 +106,7 @@ All images are based on Debian 12 and compiled for `amd64` and `arm64`.
 ### 2) Generate a structured prompt from the request
 - Write a prompt that restates the requested lab in a precise, implementation-ready form.
 - Fill in unspecified details with reasonable defaults and mark them as assumptions.
-- Include at least:
+- Include at least: 
   - target path and lab name
   - device list and roles
   - link mapping / collision domains

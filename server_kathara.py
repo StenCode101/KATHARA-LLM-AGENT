@@ -1,30 +1,20 @@
 import os
 import shlex
+import subprocess
+import sys
+import re
 from mcp.server.mcpserver import MCPServer
 from Kathara.manager.Kathara import Kathara
 from Kathara.parser.netkit.LabParser import LabParser
-
-import subprocess
-import sys
 from Kathara.setting.Setting import Setting
 
 # Inizializziamo il Server FastMCP
 mcp = MCPServer("ServerGestioneKathara")
 
-import os
-import subprocess
-from Kathara.manager.Kathara import Kathara
-from Kathara.parser.netkit.LabParser import LabParser
-
-
-import re
-import os
-
 @mcp.tool()
 def analizza_compito(percorso_file: str) -> str:
     """
-    Legge un file di testo con le domande del compito, pulisce la sintassi (es. {1:SHORTANSWER...}) 
-    sostituendola con segnaposto testuali e restituisce il testo affiancato dalle soluzioni corrette.
+    Legge un file, pulisce la numerazione a paragrafi e restituisce il testo affiancato dalle soluzioni.
     """
     try:
         if not os.path.isfile(percorso_file):
@@ -36,28 +26,23 @@ def analizza_compito(percorso_file: str) -> str:
         soluzioni = {}
         contatore = 1
         
-        # Funzione interna per analizzare e sostituire ogni blocco {...}
         def rimpiazza_blocco(match):
             nonlocal contatore
             blocco = match.group(1)
-            
-            # Estrae tutte le risposte corrette marcate con ~= e che terminano prima di #OK
             corrette = re.findall(r"~=([^#]+)#OK", blocco)
-            
             id_domanda = f"[DOMANDA {contatore}]"
             if corrette:
-                # Gestisce il caso di risposte multiple corrette (es. HTTP/1.1 oppure 1.1)
                 soluzioni[id_domanda] = " OPPURE ".join(corrette)
             else:
                 soluzioni[id_domanda] = "Nessuna soluzione specificata"
-                
             contatore += 1
             return id_domanda
 
-        # Cerca tutti i blocchi compresi tra { e } e li elabora
         testo_pulito = re.sub(r"\{([^}]+)\}", rimpiazza_blocco, testo)
         
-        # Costruisce l'output formattato per l'LLM
+        # Rimuove i numeri di paragrafo per non confondere l'IA
+        testo_pulito = re.sub(r"^\s*(\d+|[a-z])\.\s*", "", testo_pulito, flags=re.MULTILINE)
+        
         risultato_finale = "📄 TESTO DEL COMPITO:\n"
         risultato_finale += testo_pulito.strip() + "\n\n"
         
@@ -68,7 +53,7 @@ def analizza_compito(percorso_file: str) -> str:
         return risultato_finale
         
     except Exception as e:
-        return f"❌ Errore durante l'analisi del compito: {str(e)}"
+        return f"❌ Errore durante l'analisi: {str(e)}"
     
 @mcp.tool()
 def avvia_laboratorio(percorso_lab: str) -> str:
@@ -109,6 +94,7 @@ def avvia_laboratorio(percorso_lab: str) -> str:
                 comando_windows = f"start cmd.exe /c docker exec -it {nome_container} /bin/bash"
                 subprocess.Popen(comando_windows, shell=True)
             else:
+                
                 print(f"⚠️ Impossibile aprire il terminale per {nome_macchina}: container non trovato.")
                 
         return f"✅ Laboratorio '{lab.name}' avviato. Terminali aperti."
@@ -127,62 +113,16 @@ def spegni_laboratorio(nome_lab: str) -> str:
     except Exception as e:
         return f"❌ Errore durante lo spegnimento del laboratorio: {str(e)}"
     
-    
-    
-@mcp.tool()
-def stato_macchine(nome_lab: str) -> str:
-    """Restituisce la lista delle macchine del laboratorio con i loro nomi brevi originali."""
-    try:
-        # Recupera l'oggetto Lab ad alto livello invece dei container grezzi
-        lab = Kathara.get_instance().get_lab_from_api(lab_name=nome_lab)
-        
-        if not lab or not lab.machines:
-            return f"Nessuna macchina trovata per il lab '{nome_lab}'."
-            
-        risultato = f"Dispositivi attivi nel lab '{nome_lab}':\n"
-        
-        # lab.machines è un dizionario che usa i nomi brevi (es. 'r3', 'pc1') come chiavi
-        for nome_macchina in lab.machines.keys():
-            risultato += f"- {nome_macchina}\n"
-            
-        return risultato
-    except Exception as e:
-        return f"❌ Errore durante la lettura dello stato: {str(e)}"
-    
 
 @mcp.tool()
-def apri_terminale(nome_macchina: str) -> str:
-    """Apre una finestra di terminale fisica per interagire con una macchina specifica usando Docker."""
+def esegui_comando_filtrato(nome_macchina: str, nome_lab: str, comando: str) -> str:
+    """
+    Esegue un comando di terminale su un nodo del laboratorio Kathará.
+    ATTENZIONE: L'output è limitato a un massimo di 30 righe per prevenire overflow.
+    Se l'output è troppo lungo, usa 'grep' o 'head' nel comando per filtrare i risultati.
+    """
     try:
-        # 1. Interroga Docker per ottenere i nomi di tutti i container in esecuzione
-        risultato_docker = subprocess.run(
-            ["docker", "ps", "--format", "{{.Names}}"], 
-            capture_output=True, text=True, check=True
-        )
-        
-        # 2. Cerca il container esatto che contiene il nome del nodo (es. "_pc1_")
-        nome_container = None
-        for linea in risultato_docker.stdout.strip().split('\n'):
-            if f"_{nome_macchina}_" in linea:
-                nome_container = linea.strip()
-                break
-        
-        if not nome_container:
-            return f"❌ Dispositivo '{nome_macchina}' non trovato su Docker. Sicuro sia avviato?"
-        
-        # 3. Lancia il terminale di sistema entrando direttamente nel container tramite Docker
-        comando_windows = f"start cmd.exe /c docker exec -it {nome_container} /bin/bash"
-        
-        subprocess.Popen(comando_windows, shell=True)
-        
-        return f"✅ Finestra del terminale richiesta per {nome_macchina}."
-    except Exception as e:
-        return f"❌ Errore nell'apertura del terminale: {str(e)}"
-
-@mcp.tool()
-def esegui_comando(nome_macchina: str, nome_lab: str, comando: str) -> str:
-    """Esegue un comando non interattivo all'interno di una macchina virtuale."""
-    try:
+        # 1. Esecuzione nativa tramite l'istanza di Kathará
         stdout, stderr, exit_code = Kathara.get_instance().exec(
             machine_name=nome_macchina,
             lab_name=nome_lab,
@@ -191,13 +131,32 @@ def esegui_comando(nome_macchina: str, nome_lab: str, comando: str) -> str:
             stream=False
         )
         
-        risultato = ""
-        if stdout: risultato += f"STDOUT:\n{stdout.decode('utf-8')}\n"
-        if stderr: risultato += f"STDERR:\n{stderr.decode('utf-8')}\n"
+        risultato_grezzo = ""
+        if stdout: 
+            risultato_grezzo += f"STDOUT:\n{stdout.decode('utf-8')}\n"
+        if stderr: 
+            risultato_grezzo += f"STDERR:\n{stderr.decode('utf-8')}\n"
             
-        return risultato if risultato else f"Codice di uscita: {exit_code} (Nessun output testuale)"
+        # 2. Logica di filtraggio e troncamento
+        if not risultato_grezzo.strip():
+            return f"Codice di uscita: {exit_code} (Nessun output testuale)"
+            
+        righe = risultato_grezzo.splitlines()
+        max_righe = 30
+        
+        if len(righe) > max_righe:
+            righe_filtrate = righe[:max_righe]
+            messaggio_alert = (
+                f"\n\n[⚠️ ALLERTA SISTEMA: OUTPUT TRONCATO]\n"
+                f"Il comando ha generato {len(righe)} righe, superando il limite di sicurezza.\n"
+                f"Sono state mostrate solo le prime {max_righe} righe. Riformula il comando usando 'grep' per cercare la stringa esatta."
+            )
+            return "\n".join(righe_filtrate) + messaggio_alert
+            
+        return risultato_grezzo
+
     except Exception as e:
-        return f"❌ Errore di esecuzione su {nome_macchina}: {str(e)}"
+        return f"❌ Errore durante l'esecuzione del comando su {nome_macchina}: {str(e)}"
 
 if __name__ == "__main__":
     manager = Kathara.get_instance()
