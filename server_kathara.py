@@ -1,6 +1,8 @@
 import os
 import shlex
 import subprocess
+import platform
+import shutil
 import sys
 import re
 from mcp.server.mcpserver import MCPServer
@@ -56,8 +58,30 @@ def analizza_compito(percorso_file: str) -> str:
         return f"❌ Errore durante l'analisi: {str(e)}"
     
 @mcp.tool()
+def leggi_file_laboratorio(percorso_lab: str, file_relativo: str) -> str:
+    """
+    Legge il contenuto di un file di configurazione del laboratorio (es. lab.conf, pc1.startup, pc2/etc/resolv.conf).
+    Da usare SEMPRE per l'analisi statica prima di eseguire comandi nei terminali.
+    """
+    # Costruisce il percorso assoluto unendo la cartella del lab e il nome del file
+    percorso_completo = os.path.join(percorso_lab, file_relativo)
+    
+    if not os.path.exists(percorso_completo):
+        return f"❌ Errore: Il file '{file_relativo}' non esiste in '{percorso_lab}'."
+    
+    if not os.path.isfile(percorso_completo):
+        return f"❌ Errore: '{file_relativo}' è una cartella, non un file."
+        
+    try:
+        with open(percorso_completo, 'r', encoding='utf-8') as f:
+            contenuto = f.read()
+        return f"📄 Contenuto di {file_relativo}:\n\n{contenuto}"
+    except Exception as e:
+        return f"❌ Errore durante la lettura del file: {str(e)}"    
+    
+@mcp.tool()
 def avvia_laboratorio(percorso_lab: str) -> str:
-    """Legge la configurazione, avvia il lab e apre i terminali usando Docker exec."""
+    """Legge la configurazione, avvia il lab e apre i terminali usando Docker exec in modo multipiattaforma."""
     try:
         if not os.path.isdir(percorso_lab):
             return f"❌ Errore: La cartella '{percorso_lab}' non esiste."
@@ -80,6 +104,9 @@ def avvia_laboratorio(percorso_lab: str) -> str:
         )
         lista_container = risultato_docker.stdout.strip().split('\n')
         
+        # Rileva il sistema operativo una sola volta fuori dal ciclo per efficienza
+        sistema_operativo = platform.system()
+        
         # 5. Apre i terminali
         macchine_avviate = list(lab.machines.keys())
         for nome_macchina in macchine_avviate:
@@ -90,11 +117,29 @@ def avvia_laboratorio(percorso_lab: str) -> str:
                     break
             
             if nome_container:
-                # NOTA: Usiamo /c affinché le finestre si chiudano da sole quando il lab viene spento
-                comando_windows = f"start cmd.exe /c docker exec -it {nome_container} /bin/bash"
-                subprocess.Popen(comando_windows, shell=True)
-            else:
+                comando_connessione = f"docker exec -it {nome_container} /bin/bash"
                 
+                if sistema_operativo == "Windows":
+                    # NOTA: Usiamo /c affinché le finestre si chiudano da sole quando il lab viene spento
+                    subprocess.Popen(f'start cmd.exe /c {comando_connessione}', shell=True)
+                    
+                elif sistema_operativo == "Linux":
+                    # Cerca dinamicamente il terminale installato sulla distro Linux
+                    if shutil.which("gnome-terminal"):
+                        subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f"{comando_connessione}; exec bash"])
+                    elif shutil.which("konsole"):
+                        subprocess.Popen(["konsole", "-e", "bash", "-c", f"{comando_connessione}; exec bash"])
+                    elif shutil.which("xfce4-terminal"):
+                        subprocess.Popen(["xfce4-terminal", "-e", f"bash -c '{comando_connessione}; exec bash'"])
+                    elif shutil.which("xterm"):
+                        subprocess.Popen(["xterm", "-e", f"bash -c '{comando_connessione}; exec bash'"])
+                    else:
+                        print(f"⚠️ Nessun emulatore di terminale riconosciuto trovato per {nome_macchina}.")
+                        
+                elif sistema_operativo == "Darwin":
+                    # Supporto per macOS
+                    subprocess.Popen(["osascript", "-e", f'tell app "Terminal" to do script "{comando_connessione}"'])
+            else:
                 print(f"⚠️ Impossibile aprire il terminale per {nome_macchina}: container non trovato.")
                 
         return f"✅ Laboratorio '{lab.name}' avviato. Terminali aperti."

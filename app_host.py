@@ -39,26 +39,40 @@ async def main():
             print("\n✅ Server Operativo! Puoi gestire i lab Kathará.")
             print("-" * 50)
             
-            # SYSTEM PROMPT AGGIORNATO: L'IA diventa un Docente Teorico
-            #SYSTEM PROMPT AGGIORNATO: Direttive contro l'allucinazione dei comandi e JSON strutturato
+            
+            # SYSTEM PROMPT AGGIORNATO: Approccio Ibrido (Esecutivo + Docente Teorico)
             contenuto_sistema = (
-                "Sei un ingegnere di reti. Puoi usare gli strumenti per avviare, spegnere e inviare comandi a laboratori Kathará esistenti. "
-                "REGOLA CRITICA 0 (COMPORTAMENTO REATTIVO): Non eseguire MAI strumenti (tool) di tua iniziativa. Usa un tool SOLO se l'utente ti ha esplicitamente richiesto un'azione pratica (es. 'avvia il lab', 'analizza il compito', 'controlla il router'). Se l'utente fa una domanda generica o teorica, rispondi testualmente senza attivare alcuno strumento. "
-                "Quando l'utente ti chiede di risolvere un compito, usa lo strumento analizza_compito per leggere il file. "
-                "Per ogni domanda trovata, esamina prima le configurazioni statiche (es. lab.conf, .startup) e poi verifica obbligatoriamente "
-                "il comportamento reale sul campo usando esegui_comando_filtrato (es. tcpdump, ping, ip route) per ricavare la risposta definitiva. "
-                "REGOLA CRITICA 1: Quando esegui unesci ping, devi SEMPRE usare il parametro -c (es. ping -c 2 ). "
-                "REGOLA CRITICA 2 (VERITÀ SUI COMANDI): È assolutamente proibito inventare comandi o falsificare i risultati. Se per rispondere a una domanda non hai utilizzato uno strumento, devi scriverlo esplicitamente. Le giustificazioni devono riflettere i log reali. "
-                "REGOLA CRITICA 3 (FORMATO DI USCITA RIGIDO): Quando fornisci l'analisi finale, devi restituire ESCLUSIVAMENTE un array JSON in cui ogni elemento corrisponde a una singola domanda del compito, rispettando rigorosamente la numerazione originale. "
-                "NON aggiungere testo discorsivo prima o dopo l'array JSON. NON raggruppare le domande. Usa questa esatta struttura:\n"
+                "Sei un ingegnere di reti esperto in laboratori Kathará. Il tuo comportamento cambia a seconda della richiesta dell'utente.\n\n"
+            
+                "=== MODALITÀ 1: INGEGNERE ESECUTIVO (Laboratorio e Troubleshooting) ===\n"
+                "Se l'utente chiede di ispezionare la rete, tracciare percorsi o verificare lo stato dei nodi (es. 'controlla il router r1', 'come comunicano pc1 e pc5'):\n"
+                "- DEVI AGIRE IN AUTONOMIA. Usa sempre i tool per recuperare IP, subnet o testare la connettività PRIMA di rispondere.\n"
+                "- È severamente vietato allucinare o inventare indirizzi IP, percorsi o output di terminale.\n"
+                "- Non delegare MAI l'esecuzione di comandi all'utente (non scrivere mai \"usa ip addr per verificare\").\n"
+                "- Se esegui un comando ping, devi SEMPRE usare il parametro -c (es. ping -c 2).\n"
+                "- REVISORE DI SINTASSI: Se l'utente ti incolla un comando chiedendo se è corretto o perché non funziona, non eseguire il comando. Analizzalo mentalmente, individua l'errore di sintassi Linux/Kathará, spiega l'errore in modo conciso e fornisci la sintassi corretta.\n"
+                "- Rispondi in modo discorsivo e tecnico basandoti ESCLUSIVAMENTE sull'output reale dei tool.\n\n"
+                
+                "=== MODALITÀ 2: DOCENTE TEORICO (Solo per l'analisi dei compiti) ===\n"
+                "Se l'utente ti chiede di risolvere, correggere o analizzare un compito:\n"
+                "- Usa lo strumento 'analizza_compito' per leggere il file.\n"
+                "- Per ogni domanda trovata, prendi le SOLUZIONI GIÀ CORRETTE in fondo al file e genera la guida alla risoluzione perfetta per gli studenti.\n"
+                "- In questa modalità NON devi eseguire alcun comando reale sulle macchine. Devi spiegare in modo TECNICAMENTE INATTACCABILE come si arriva a quella soluzione.\n"
+                "- USO DELLE SKILL: Per scrivere le giustificazioni teoriche, devi attingere esclusivamente alle regole e alle best practice fornite. È severamente vietato inventare falsi miti o comandi errati.\n"
+                "- FORMATO DI USCITA RIGIDO: Per l'analisi del compito devi restituire ESCLUSIVAMENTE un array JSON, senza testo discorsivo prima o dopo, rispettando la numerazione. ATTENZIONE: Non usare MAI le virgolette doppie (\") all'interno dei campi testuali (usa gli apici singoli '), altrimenti il JSON si corrompe! Usa questa esatta struttura:\n"
                 "[\n"
                 "  {\n"
                 "    \"id_domanda\": \"[DOMANDA X]\",\n"
-                "    \"risposta_breve\": \"(solo il valore esatto)\",\n"
-                "    \"comandi_eseguiti\": \"(elenca ESATTAMENTE i comandi digitati realmente. Se non hai usato comandi, scrivi 'Nessun comando eseguito - deduzione logica')\",\n"
-                "    \"giustificazione\": \"(Fornisci un'analisi oggettiva: descrivi passo dopo passo il ragionamento logico che hai fatto, i file che hai realmente letto e come i risultati degli strumenti confermano la tua tesi)\"\n"
+                "    \"risposta_breve\": \"(ricopia la soluzione fornita)\",\n"
+                "    \"comandi_di_verifica\": \"(Elenca la sequenza dei comandi Linux/Kathará necessari. Per ogni comando, scrivi il comando esatto e aggiungi una breve spiegazione di COSA FA e PERCHÉ è necessario. Esempio: '1. `ip route`: mostra la tabella di routing')\",\n"
+                "    \"giustificazione\": \"(Spiega il principio teorico e tecnico che collega i comandi alla soluzione finale. Usa termini esatti. Assicurati che i nomi dei file e i protocolli citati siano reali e sensati per Linux)\"\n"
                 "  }\n"
-                "]"
+                "]\n\n"
+                
+                "=== MODALITÀ 3: TUTOR DI TEORIA (Domande generali e concettuali) ===\n"
+                "Se l'utente ti pone una domanda puramente teorica o generale sulle reti (es. \"differenza tra topologia a stella e maglia\", \"cos'è il protocollo OSPF\"):\n"
+                "- NON chiamare alcun tool.\n"
+                "- Attingi liberamente alla tua conoscenza informatica generale per fornire una spiegazione chiara, strutturata ed esaustiva, comportandoti come un professore universitario di Reti di Calcolatori.\n"
             )
 
             
@@ -186,7 +200,7 @@ async def main():
                         if "tool_calls" in risposta and risposta["tool_calls"]:
                             contatore_tool += 1 
                             
-                            if contatore_tool > 50:
+                            if contatore_tool > 10:
                                 print(f"\n🛑 [ANTI-LOOP] Rilevati {contatore_tool} comandi consecutivi. Forzo l'interruzione di sicurezza...\n")
                                 for chiamata in risposta["tool_calls"]:
                                     storico_messaggi.append({
@@ -215,22 +229,34 @@ async def main():
                                     "name": nome_tool
                                 })
                         else:
-                            # Stampa formattata aggiornata per il nuovo JSON del Docente
                             testo_risposta = risposta.get('content', '').strip()
+                            
+                            # Estrazione aggressiva (nel caso avesse usato il markdown ```json)
+                            testo_pulito = testo_risposta
+                            sezioni = testo_pulito.split("```")
+                            if len(sezioni) >= 3:
+                                testo_pulito = sezioni[1]
+                                if testo_pulito.startswith("json"):
+                                    testo_pulito = testo_pulito[4:].strip()
+                            
                             try:
-                                if testo_risposta.startswith("```json"):
-                                    testo_risposta = testo_risposta.replace("```json\n", "").replace("```", "")
+                                # Tenta di leggerlo come JSON
+                                dati_json = json.loads(testo_pulito)
                                 
-                                dati_json = json.loads(testo_risposta)
+                                # Se ci riesce, stampa l'albero del Docente Teorico
                                 print("\n🧠 RISPOSTA IA (Guida Teorica Strutturata):")
                                 for elemento in dati_json:
                                     print(f"\n{elemento.get('id_domanda', '[ID MANCANTE]')}")
                                     print(f"  ├─ Valore Esatto: {elemento.get('risposta_breve', 'N/D')}")
-                                    print(f"  ├─ Comando Suggerito: {elemento.get('comando_di_verifica', 'N/D')}")
-                                    print(f"  └─ Spiegazione Teorica: {elemento.get('giustificazione_teorica', 'N/D')}")
+                                    print(f"  ├─ Sequenza Comandi: {elemento.get('comandi_di_verifica', 'N/D')}")
+                                    print(f"  └─ Spiegazione Teorica: {elemento.get('giustificazione', 'N/D')}")
                                 print("\n")
+                                
                             except json.JSONDecodeError:
-                                print(f"🧠 IA (Formato non JSON):\n{testo_risposta}\n")
+                                # Se fallisce, significa che è un NORMALE messaggio di chat (Modalità 1)
+                                # Lo stampiamo in modo pulito e naturale, senza finti errori.
+                                print(f"\n🧠 IA:\n{testo_risposta}\n")
+                                
                             break
                             
                 except KeyboardInterrupt:
