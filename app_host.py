@@ -132,8 +132,9 @@ async def main():
                     contatore_tool = 0 
                     
                     while True:
-                        if len(storico_messaggi) > 7:
-                            storico_messaggi = [storico_messaggi[0]] + storico_messaggi[-6:]
+                        if len(storico_messaggi) > 25:
+                            # Mantiene il System Prompt [0] e gli ultimi 24 messaggi di interazione
+                            storico_messaggi = [storico_messaggi[0]] + storico_messaggi[-24:]
 
                         payload = {
                             "model": MODELLO, 

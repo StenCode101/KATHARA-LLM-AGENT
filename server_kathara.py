@@ -57,17 +57,27 @@ def analizza_compito(percorso_file: str) -> str:
     except Exception as e:
         return f"❌ Errore durante l'analisi: {str(e)}"
     
+    
 @mcp.tool()
 def leggi_file_laboratorio(percorso_lab: str, file_relativo: str) -> str:
     """
     Legge il contenuto di un file di configurazione del laboratorio (es. lab.conf, pc1.startup, pc2/etc/resolv.conf).
     Da usare SEMPRE per l'analisi statica prima di eseguire comandi nei terminali.
     """
-    # Costruisce il percorso assoluto unendo la cartella del lab e il nome del file
+    # 1. Normalizzazione assoluta per prevenire percorsi frammentati dall'IA (es. "lab")
+    percorso_lab = os.path.abspath(percorso_lab)
+    
+    # 2. Scudo per individuare la cartella corretta: se non trova lab.conf, cerca nella sottocartella "lab"
+    if not os.path.exists(os.path.join(percorso_lab, "lab.conf")):
+        percorso_alternativo = os.path.join(percorso_lab, "lab")
+        if os.path.exists(os.path.join(percorso_alternativo, "lab.conf")):
+            percorso_lab = percorso_alternativo
+            
+    # Costruisce il percorso assoluto unendo la cartella del lab calcolata e il nome del file
     percorso_completo = os.path.join(percorso_lab, file_relativo)
     
     if not os.path.exists(percorso_completo):
-        return f"❌ Errore: Il file '{file_relativo}' non esiste in '{percorso_lab}'."
+        return f"❌ Errore: Il file '{file_relativo}' non esiste nella cartella '{percorso_lab}'."
     
     if not os.path.isfile(percorso_completo):
         return f"❌ Errore: '{file_relativo}' è una cartella, non un file."
@@ -77,7 +87,7 @@ def leggi_file_laboratorio(percorso_lab: str, file_relativo: str) -> str:
             contenuto = f.read()
         return f"📄 Contenuto di {file_relativo}:\n\n{contenuto}"
     except Exception as e:
-        return f"❌ Errore durante la lettura del file: {str(e)}"    
+        return f"❌ Errore durante la lettura del file: {str(e)}"  
     
 @mcp.tool()
 def avvia_laboratorio(percorso_lab: str) -> str:
@@ -171,7 +181,7 @@ def esegui_comando_filtrato(nome_macchina: str, nome_lab: str, comando: str) -> 
         stdout, stderr, exit_code = Kathara.get_instance().exec(
             machine_name=nome_macchina,
             lab_name=nome_lab,
-            command=shlex.split(comando),
+            command=["/bin/bash", "-c", comando],
             wait=True,
             stream=False
         )
@@ -203,6 +213,7 @@ def esegui_comando_filtrato(nome_macchina: str, nome_lab: str, comando: str) -> 
     except Exception as e:
         return f"❌ Errore durante l'esecuzione del comando su {nome_macchina}: {str(e)}"
 
+    
 if __name__ == "__main__":
     manager = Kathara.get_instance()
     mcp.run()
