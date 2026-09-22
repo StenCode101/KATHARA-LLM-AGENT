@@ -13,50 +13,7 @@ from Kathara.setting.Setting import Setting
 # Inizializziamo il Server FastMCP
 mcp = MCPServer("ServerGestioneKathara")
 
-@mcp.tool()
-def analizza_compito(percorso_file: str) -> str:
-    """
-    Legge un file, pulisce la numerazione a paragrafi e restituisce il testo affiancato dalle soluzioni.
-    """
-    try:
-        if not os.path.isfile(percorso_file):
-            return f"❌ Errore: Il file '{percorso_file}' non esiste."
-            
-        with open(percorso_file, 'r', encoding='utf-8') as f:
-            testo = f.read()
-            
-        soluzioni = {}
-        contatore = 1
-        
-        def rimpiazza_blocco(match):
-            nonlocal contatore
-            blocco = match.group(1)
-            corrette = re.findall(r"~=([^#]+)#OK", blocco)
-            id_domanda = f"[DOMANDA {contatore}]"
-            if corrette:
-                soluzioni[id_domanda] = " OPPURE ".join(corrette)
-            else:
-                soluzioni[id_domanda] = "Nessuna soluzione specificata"
-            contatore += 1
-            return id_domanda
 
-        testo_pulito = re.sub(r"\{([^}]+)\}", rimpiazza_blocco, testo)
-        
-        # Rimuove i numeri di paragrafo per non confondere l'IA
-        testo_pulito = re.sub(r"^\s*(\d+|[a-z])\.\s*", "", testo_pulito, flags=re.MULTILINE)
-        
-        risultato_finale = "📄 TESTO DEL COMPITO:\n"
-        risultato_finale += testo_pulito.strip() + "\n\n"
-        
-        risultato_finale += "✅ CHIAVE DI LETTURA (SOLUZIONI CORRETTE):\n"
-        for id_dom, sol in soluzioni.items():
-            risultato_finale += f"{id_dom}: {sol}\n"
-            
-        return risultato_finale
-        
-    except Exception as e:
-        return f"❌ Errore durante l'analisi: {str(e)}"
-    
     
 @mcp.tool()
 def leggi_file_laboratorio(percorso_lab: str, file_relativo: str) -> str:

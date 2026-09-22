@@ -21,6 +21,57 @@ async def mostra_caricamento(evento_stop):
             break
     sys.stdout.write("\r" + " " * 30 + "\r")
     sys.stdout.flush()
+    
+def estrai_domande_singole(percorso_file: str):
+    """Generatore che legge il compito, separa le domande e fa yield del prompt."""
+    import os, re
+    if not os.path.isfile(percorso_file):
+        print(f"❌ Errore: Il file '{percorso_file}' non esiste.")
+        return
+
+    with open(percorso_file, 'r', encoding='utf-8') as f:
+        testo = f.read()
+
+    # Dividiamo il file per doppio a capo (ogni blocco è una domanda separata)
+    blocchi = re.split(r'\n\s*\n', testo)
+    
+    contatore = 1
+    for blocco in blocchi:
+        blocco = blocco.strip()
+        # Ignora blocchi vuoti o commenti iniziali
+        if not blocco or blocco.startswith('//'):
+            continue
+            
+        # Cerca il blocco delle soluzioni tra parentesi graffe
+        match_graffe = re.search(r"\{([^}]+)\}", blocco)
+        if not match_graffe:
+            continue # Salta se non ci sono parentesi graffe
+            
+        contenuto_graffe = match_graffe.group(1)
+        corrette = re.findall(r"~=([^#]+)#OK", contenuto_graffe)
+        
+        # Estrae il VERO TESTO della domanda rimuovendo le parentesi graffe e il loro contenuto
+        testo_domanda = re.sub(r"\{[^}]+\}", "", blocco).strip()
+        # Rimuove la numerazione iniziale per non confondere l'IA (es. "1. ")
+        testo_domanda = re.sub(r"^\s*(\d+|[a-z])\.\s*", "", testo_domanda, flags=re.MULTILINE)
+        
+        soluzioni = " OPPURE ".join(corrette) if corrette else "Nessuna soluzione specificata"
+        
+        # Creiamo un prompt isolato, blindato e formattato
+        prompt_finale = (
+            f"Sei nella 'MODALITÀ 2: DOCENTE TEORICO'. Sto analizzando un compito un passo alla volta.\n"
+            f"NON usare alcun tool (nessun `leggi_file_laboratorio`, nessun comando eseguito).\n"
+            f"Spiega in modo teorico e inattaccabile come arrivare a questa soluzione, usando la formattazione Markdown (non JSON).\n\n"
+            f"📄 TESTO DELLA DOMANDA:\n{testo_domanda}\n\n"
+            f"✅ SOLUZIONE ESATTA PREVISTA:\n{soluzioni}\n\n"
+            f"Genera una guida che contenga:\n"
+            f"1. I comandi esatti da eseguire (con spiegazione del perché si usano).\n"
+            f"2. La giustificazione teorica che porta al risultato."
+        )
+        
+        # Restituiamo un'anteprima del testo e il prompt completo
+        yield testo_domanda, prompt_finale
+        contatore += 1
 
 async def main():
     print("🔄 Connessione al Server MCP Kathara API...")
@@ -53,23 +104,7 @@ async def main():
                 "- REVISORE DI SINTASSI: Se l'utente ti incolla un comando chiedendo se è corretto o perché non funziona, non eseguire il comando. Analizzalo mentalmente, individua l'errore di sintassi Linux/Kathará, spiega l'errore in modo conciso e fornisci la sintassi corretta.\n"
                 "- Rispondi in modo discorsivo e tecnico basandoti ESCLUSIVAMENTE sull'output reale dei tool.\n\n"
                 
-                "=== MODALITÀ 2: DOCENTE TEORICO (Solo per l'analisi dei compiti) ===\n"
-                "Se l'utente ti chiede di risolvere, correggere o analizzare un compito:\n"
-                "- Usa lo strumento 'analizza_compito' per leggere il file.\n"
-                "- Per ogni domanda trovata, prendi le SOLUZIONI GIÀ CORRETTE in fondo al file e genera la guida alla risoluzione perfetta per gli studenti.\n"
-                "- In questa modalità NON devi eseguire alcun comando reale sulle macchine. Devi spiegare in modo TECNICAMENTE INATTACCABILE come si arriva a quella soluzione.\n"
-                "- USO DELLE SKILL: Per scrivere le giustificazioni teoriche, devi attingere esclusivamente alle regole e alle best practice fornite. È severamente vietato inventare falsi miti o comandi errati.\n"
-                "- FORMATO DI USCITA RIGIDO: Per l'analisi del compito devi restituire ESCLUSIVAMENTE un array JSON, senza testo discorsivo prima o dopo, rispettando la numerazione. ATTENZIONE: Non usare MAI le virgolette doppie (\") all'interno dei campi testuali (usa gli apici singoli '), altrimenti il JSON si corrompe! Usa questa esatta struttura:\n"
-                "[\n"
-                "  {\n"
-                "    \"id_domanda\": \"[DOMANDA X]\",\n"
-                "    \"risposta_breve\": \"(ricopia la soluzione fornita)\",\n"
-                "    \"comandi_di_verifica\": \"(Elenca la sequenza dei comandi Linux/Kathará necessari. Per ogni comando, scrivi il comando esatto e aggiungi una breve spiegazione di COSA FA e PERCHÉ è necessario. Esempio: '1. `ip route`: mostra la tabella di routing')\",\n"
-                "    \"giustificazione\": \"(Spiega il principio teorico e tecnico che collega i comandi alla soluzione finale. Usa termini esatti. Assicurati che i nomi dei file e i protocolli citati siano reali e sensati per Linux)\"\n"
-                "  }\n"
-                "]\n\n"
-                
-                "=== MODALITÀ 3: TUTOR DI TEORIA (Domande generali e concettuali) ===\n"
+                "=== MODALITÀ 2: TUTOR DI TEORIA (Domande generali e concettuali) ===\n"
                 "Se l'utente ti pone una domanda puramente teorica o generale sulle reti (es. \"differenza tra topologia a stella e maglia\", \"cos'è il protocollo OSPF\"):\n"
                 "- NON chiamare alcun tool.\n"
                 "- Attingi liberamente alla tua conoscenza informatica generale per fornire una spiegazione chiara, strutturata ed esaustiva, comportandoti come un professore universitario di Reti di Calcolatori.\n"
@@ -114,7 +149,45 @@ async def main():
                     numero_prompt = 0
                     print("🧹 Memoria azzerata. Contesto e report puliti.\n")
                     continue
+                
+                # NUOVO BLOCCO: Intercetta il comando di analisi batch
+                if prompt.lower().startswith("analizza "):
+                    percorso_file = prompt[9:].strip().strip('"').strip("'")
+                    print(f"\n📂 Avvio correzione batch per: {percorso_file}")
                     
+                    # Usa il generatore: ora restituisce due valori!
+                    for testo_anteprima, prompt_singola_domanda in estrai_domande_singole(percorso_file):
+                        
+                        # Mostra le prime 60 lettere della domanda per farti capire a che punto è
+                        anteprima_pulita = testo_anteprima.replace('\n', ' ')[:60]
+                        print(f"\n⏳ Elaborazione in corso per: '{anteprima_pulita}...'")
+                        
+                        messaggi_temporanei = [
+                            {"role": "system", "content": contenuto_sistema},
+                            {"role": "user", "content": prompt_singola_domanda}
+                        ]
+                        
+                        payload = {
+                            "model": MODELLO,
+                            "messages": messaggi_temporanei,
+                            "stream": False
+                        }
+                        
+                        try:
+                            timeout_infinito = aiohttp.ClientTimeout(total=None)
+                            async with aiohttp.ClientSession(timeout=timeout_infinito) as session_http:
+                                async with session_http.post(OLLAMA_URL, json=payload) as risposta_http:
+                                    risposta_grezza = await risposta_http.json()
+                                    risposta = risposta_grezza.get("message", {}).get("content", "")
+                                    print(f"\n🧠 GUIDA GENERATA:\n{risposta}\n")
+                                    print("-" * 50)
+                        except Exception as e:
+                            print(f"❌ Errore durante l'elaborazione di questa domanda: {e}")
+                            
+                    print("\n✅ Analisi dell'intero compito completata con successo!\n")
+                    continue
+                
+                
                 if prompt.lower() == "report":
                     nome_file = f"Report_Telemetria.md"
                     with open(nome_file, "w", encoding="utf-8") as f:
