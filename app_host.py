@@ -215,7 +215,11 @@ async def main():
                             "stream": False, 
                             "tools": formatta_tools(tools.tools),
                             "options": {
-                                "num_ctx": 8192 
+                                "num_ctx": 8192,           # Mantiene la memoria ampia
+                                "temperature": 0.1,        # Quasi 0 creatività, solo fatti
+                                "top_p": 0.5,              # Taglia le allucinazioni fantasiose
+                                "repeat_penalty": 1.2,     # Evita i cicli infiniti
+                                "seed": 12345              # [OPZIONALE] Attivalo solo se vuoi fare A/B testing 
                             }
                         }
                         
