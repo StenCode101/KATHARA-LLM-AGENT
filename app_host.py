@@ -180,6 +180,24 @@ async def main():
                                     risposta_grezza = await risposta_http.json()
                                     risposta = risposta_grezza.get("message", {}).get("content", "")
                                     print(f"\n🧠 GUIDA GENERATA:\n{risposta}\n")
+                                    
+                                    # --- BLOCCO TELEMETRIA BATCH ---
+                                    token_prompt = risposta_grezza.get("prompt_eval_count", 0)
+                                    token_risposta = risposta_grezza.get("eval_count", 0)
+                                    load_dur = risposta_grezza.get("load_duration", 0) / 1e9
+                                    prompt_dur = risposta_grezza.get("prompt_eval_duration", 0) / 1e9
+                                    eval_dur = risposta_grezza.get("eval_duration", 0) / 1e9
+                                    
+                                    ttft = load_dur + prompt_dur
+                                    vel_lettura = token_prompt / prompt_dur if prompt_dur > 0 else 0
+                                    vel_scrittura = token_risposta / eval_dur if eval_dur > 0 else 0
+
+                                    print(f"📊 [TELEMETRIA AVANZATA]")
+                                    print(f" ├─ Latenza Avvio (TTFT): {ttft:.2f}s (Caricamento: {load_dur:.2f}s)")
+                                    print(f" ├─ Lettura Contesto: {token_prompt} tk elaborati a {vel_lettura:.1f} tk/s")
+                                    print(f" └─ Scrittura Output: {token_risposta} tk generati a {vel_scrittura:.1f} tk/s\n")
+                                    # -------------------------------
+                                    
                                     print("-" * 50)
                         except Exception as e:
                             print(f"❌ Errore durante l'elaborazione di questa domanda: {e}")
@@ -188,15 +206,16 @@ async def main():
                     continue
                 
                 
+                # BLOCCO REPORT AGGIORNATO CON NUOVE METRICHE
                 if prompt.lower() == "report":
                     nome_file = f"Report_Telemetria.md"
                     with open(nome_file, "w", encoding="utf-8") as f:
                         f.write("# 📊 Report Telemetria IA\n\n")
-                        f.write("| Prompt # | Tempo (s) | Token Prompt | Token Generati | Velocità (tk/s) |\n")
-                        f.write("|----------|-----------|--------------|----------------|-----------------|\n")
+                        f.write("| Prompt # | Tempo Tot. (s) | TTFT (s) | Token Prompt | Vel. Lettura (tk/s) | Token Gen. | Vel. Scrittura (tk/s) |\n")
+                        f.write("|----------|----------------|----------|--------------|---------------------|------------|-----------------------|\n")
                         for r in storico_report:
-                            f.write(f"| {r['id']} | {r['tempo']:.2f} | {r['prompt']} | {r['gen']} | {r['vel']:.1f} |\n")
-                    print(f"📁 Report generato con successo: {nome_file}\n")
+                            f.write(f"| {r['id']} | {r['tempo']:.2f} | {r['ttft']:.2f} | {r['prompt']} | {r['vel_lettura']:.1f} | {r['gen']} | {r['vel_scrittura']:.1f} |\n")
+                    print(f"📁 Report avanzato generato con successo: {nome_file}\n")
                     continue
                     
                 storico_messaggi.append({"role": "user", "content": prompt})
@@ -248,21 +267,32 @@ async def main():
                             evento_stop.set()
                             await task_caricamento  
                         
+                        # --- CALCOLO METRICHE PER IL REPORT E LA CONSOLE ---
                         tempo_totale = time.perf_counter() - inizio_timer
                         token_prompt = risposta_grezza.get("prompt_eval_count", 0)
                         token_risposta = risposta_grezza.get("eval_count", 0)
-                        durata_generazione_ns = risposta_grezza.get("eval_duration", 0)
-                        velocita = (token_risposta / (durata_generazione_ns / 1e9)) if durata_generazione_ns > 0 else 0
                         
-                        print(f"📊 [REPORT IA] ⏱️ Rete+Elaborazione: {tempo_totale:.2f}s | 📥 Prompt: {token_prompt} tk | 📤 Gen: {token_risposta} tk | ⚡ Velocità: {velocita:.1f} tk/s\n")
+                        load_dur = risposta_grezza.get("load_duration", 0) / 1e9
+                        prompt_dur = risposta_grezza.get("prompt_eval_duration", 0) / 1e9
+                        eval_dur = risposta_grezza.get("eval_duration", 0) / 1e9
+                        
+                        ttft = load_dur + prompt_dur
+                        vel_lettura = token_prompt / prompt_dur if prompt_dur > 0 else 0
+                        vel_scrittura = token_risposta / eval_dur if eval_dur > 0 else 0
+                        
+                        print(f"📊 [REPORT IA] ⏱️ Rete+Elaborazione: {tempo_totale:.2f}s | TTFT: {ttft:.2f}s | 📥 Prompt: {token_prompt} tk | 📤 Gen: {token_risposta} tk | ⚡ Velocità: {vel_scrittura:.1f} tk/s\n")
                         
                         numero_prompt += 1
+                        
+                        # Salvataggio dati esteso per il report Markdown
                         storico_report.append({
                             "id": numero_prompt,
                             "tempo": tempo_totale,
+                            "ttft": ttft,
                             "prompt": token_prompt,
+                            "vel_lettura": vel_lettura,
                             "gen": token_risposta,
-                            "vel": velocita
+                            "vel_scrittura": vel_scrittura
                         })
                             
                         if "error" in risposta_grezza:
