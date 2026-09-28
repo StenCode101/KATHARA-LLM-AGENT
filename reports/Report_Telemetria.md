@@ -516,3 +516,10 @@ dig +stats AAAA ipv6-cagliari.it
 - **Web server IPv6:** Il server che gestisce il dominio `ipv6-cagliari.it` è indicato dal record `AAAA` associato al dominio.  
 - **Indirizzo IPv6:** L'indirizzo è estratto dal record `AAAA` tramite il comando `dig`.  
 - **Pacchetti di risposta:** Il file di risposta è suddiviso in **1 pacchetto** in base al comportamento standard del protocollo DNS.   No newline at end of file
+
+
+
+
+Le risposte fornite dall'LLM non sono corrette. Non ha rispettato la Modalità 2: Docente Teorico, in quanto non ha fornito la spiegazione del perché, dato il dominio "cagliari.it", la macchina da indicare per "cagliari" fosse "pc4" o "pc3" (le risposte non sono del tutto corrette). Ha fornito delle spiegazioni teoriche, ma non ha risposto alle domande poste. Inoltre, in alcuni casi l'LLM ha allucinato. Ad esempio: "Il pacchetto GET generato da links cagliari.it utilizza sempre la versione HTTP/1.1 (standard per HTTP), a meno che non si utilizzino protocolli legacy (come HTTP/0.9)".
+
+Inoltre, non ha spiegato perché la soluzione fosse 24 (come nel primo caso) limitandosi a dire che 24 è la "dimensione del blocco subnet (24 bit per la rete)", senza però specificare quale blocco. Infine, ha fornito una risposta incompleta alla domanda "Da pc5 viene eseguito il comando links ipv6-cagliari.it", non indicando il web server corretto né l'indirizzo IPv6 del server. L'LLM si è concentrato sulla spiegazione dei comandi e non sulla risoluzione del compito.
