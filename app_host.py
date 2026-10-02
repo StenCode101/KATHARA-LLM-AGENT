@@ -234,12 +234,27 @@ async def main():
                             "stream": False, 
                             "tools": formatta_tools(tools.tools),
                             "options": {
+                                #PROFILO C CALIBRATO
                                 "num_ctx": 8192,           # Mantiene la memoria ampia
+                                "temperature": 0.1,        # Quasi 0 creatività, solo fatti
+                                "top_p": 0.5,              # Taglia le allucinazioni fantasiose
+                                "repeat_penalty": 1.2,     # Evita i cicli infiniti
+                                "seed": 12345              # [OPZIONALE] Attivalo solo se vuoi fare A/B testing
                                 
-                                #"temperature": 0.1,        # Quasi 0 creatività, solo fatti
-                                #"top_p": 0.5,              # Taglia le allucinazioni fantasiose
-                                #"repeat_penalty": 1.2,     # Evita i cicli infiniti
-                                #"seed": 12345              # [OPZIONALE] Attivalo solo se vuoi fare A/B testing 
+                                #PROFILO A CREATIVO
+                                #"num_ctx": 8192,          
+                                #"temperature": 0.8,        
+                                #"top_p": 0.9,              
+                                #"repeat_penalty": 1.1,     
+                                                            # [OPZIONALE] Attivalo solo se vuoi fare A/B testing
+
+                                #PROFILO B DETERMINISTICO
+                                #"num_ctx": 8192,           # Mantiene la memoria ampia
+                                #"temperature": 0.0,        # Quasi 0 creatività, solo fatti
+                                #"top_p": 1.0,              # Taglia le allucinazioni fantasiose
+                                #"repeat_penalty": 1.0,     # Evita i cicli infiniti
+                                #"seed": 12345              # [OPZIONALE] Attivalo solo se vuoi fare A/B testing
+                                                
                             }
                         }
                         
